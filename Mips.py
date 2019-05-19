@@ -8,6 +8,7 @@ class Assembler():
         self.entryTable = {}
         self.maps = {}
 
+    '''生成汇编代码的数据段'''
     def dataInit(self):
         self.mipsList.append('.data\n')
         for s in self.symbolList:
@@ -17,10 +18,12 @@ class Assembler():
                     newLine += '\t.word\t0\n'
                 self.mipsList.append(newLine)
 
+    '''分配一个新的入口名字'''
     def newEntry(self):
         self.entryCount += 1
         return 'L'+str(self.entryCount)
 
+    '''获取跳转地址的入口名字'''
     def getEntry(self, c):
         entryTable = self.entryTable
         if c['result'] > c['addr'] and 'newEntry' not in self.codeList[c['result'] - 100]:
@@ -37,6 +40,8 @@ class Assembler():
             newEntry = entryTable[c['result']]
         return newEntry
 
+
+    '''根据中间代码获取3个操作数'''
     def getArgs(self, c):
         before = ""
         after = ""
@@ -87,6 +92,7 @@ class Assembler():
             result = ""
         return arg1, arg2, result, before, after
 
+    '''生成汇编代码的代码段'''
     def getText(self):
         self.mipsList.append('\n.text\n')
         self.mipsList.append('addi $sp, $0, 0x10018000\t#初始化栈顶\n')
@@ -235,6 +241,7 @@ class Assembler():
             self.mipsList.append(line)
         self.mipsList.append('end:')
 
+    '''总控程序'''
     def generate(self):
         self.dataInit()
         self.getText()

@@ -35,7 +35,7 @@ class SDTAnalysis:
         self.domain = 'global'
         self.funCode = {}
         self.funCode['global'] = []
-        self.regCount = 7
+        self.TmpCount = 7
         self.errorReason = ''
         self.tmpAddNodeList = MyStack()
         self.tmpMulNodeList = MyStack()
@@ -287,6 +287,7 @@ class SDTAnalysis:
                 return word, label, now
         return -1, -1, -1  #越界
 
+    '''产生一行中间代码'''
     def genCode(self, op=None, arg1=None, arg2=None, result=None):
         code = {}
         code['addr'] = 0
@@ -298,6 +299,7 @@ class SDTAnalysis:
         code['result'] = result
         return code
 
+    '''查询符号表'''
     def lookUpSymbol(self, name, domain):
 
         for i in range(len(self.symbolList)):
@@ -308,12 +310,14 @@ class SDTAnalysis:
                 return i, self.symbolList[i]["domain"]
         return -1, "NULL"
 
-    def newReg(self):
-        if self.regCount == 24:
-            self.regCount = 7
-        self.regCount += 1
-        return self.regCount
+    '''申请新的变量'''
+    def newTmp(self):
+        if self.TmpCount == 24:
+            self.TmpCount = 7
+        self.TmpCount += 1
+        return self.TmpCount
 
+    '''完成翻译后分配地址'''
     def arrangeAddr(self):
         codeList = []
         unknownList = []
@@ -385,15 +389,14 @@ class SDTAnalysis:
 
             '''文件读完,未完成语法分析'''
             if word == -1:
-                self.errorReason += ('语法错误,line %d:' % self.lineCounter + ' 语法分析错误结束\n')
+                self.errorReason += ('Syntax error, line %d:' % self.lineCounter + ' no end token #\n')
                 outResult += '\n'
                 break
 
             '''遇非法字符'''
             if label == 'ERROR':
-                self.errorReason += ('语法错误,line %d:' % self.lineCounter + ' 跳过非法词%s\n'%word)
+                self.errorReason += ('Syntax error, line %d:' % self.lineCounter + ' skip %s\n'%word)
                 outResult += '\n'
-                #word, label, now = self.advance()
                 break
 
             out = ('line %d: '%self.lineCounter
@@ -403,6 +406,7 @@ class SDTAnalysis:
             proResult = False
             topNode = stack.pop()
             X = topNode.data
+
             if X in self.Terminals:
 
                 if X == now:
@@ -414,7 +418,7 @@ class SDTAnalysis:
                             symbol['idName'] = word
                             symbol['label'] = 'formal'
                             symbol["domain"] = self.domain
-                            code = self.genCode(op='pop', result={'reg': self.newReg()})
+                            code = self.genCode(op='pop', result={'reg': self.newTmp()})
                             symbol['reg'] = code['result']['reg']
                             self.symbolList.append(symbol)
                             self.funCode[self.domain].append(code)
@@ -433,7 +437,7 @@ class SDTAnalysis:
                         if topNode.parent.data == '赋值语句':
                             symbolIndex, tag = self.lookUpSymbol(topNode.parent.children[0].attributes['place'], self.domain)
                             if symbolIndex < 0 or (tag != self.domain and tag != "global"):
-                                self.errorReason += ("Line%d: 未声明的标识符 %s\n"%(self.lineCounter, topNode.parent.children[0].attributes['place']))
+                                self.errorReason += ("Line%d: undeclared identifier %s\n"%(self.lineCounter, topNode.parent.children[0].attributes['place']))
                                 break
                             if self.symbolList[symbolIndex]['label'] == 'formal':
                                 code = self.genCode(op=':=', arg1=topNode.parent.children[2].attributes['place'],
@@ -448,16 +452,18 @@ class SDTAnalysis:
                             if topNode.parent.children[0].data == '表达式':
                                 symbolIndex, _ = self.lookUpSymbol(self.domain, self.domain)
                                 if self.symbolList[symbolIndex]['type'] == 'void':
-                                    self.errorReason += 'Line%d: void %s函数不能有返回值'%(self.lineCounter,
+                                    self.errorReason += 'Line%d: void %s can not have a return value.\n '%(self.lineCounter,
                                                                                    self.domain)
+                                    break
                                 self.funCode[self.domain].append(self.genCode(
                                     op='push', result= topNode.parent.children[0].attributes['place']
                                 ))
                             else:
                                 symbolIndex, _ = self.lookUpSymbol(self.domain, self.domain)
                                 if self.symbolList[symbolIndex]['type'] == 'int':
-                                    self.errorReason += 'Line%d: int %s函数必须返回一个值' % (self.lineCounter,
+                                    self.errorReason += 'Line%d: int %s has no return value.\n ' % (self.lineCounter,
                                                                                      self.domain)
+                                    break
                             self.funCode[self.domain].append(self.genCode(
                                 op='jr', result='$ra'
                             ))
@@ -510,14 +516,14 @@ class SDTAnalysis:
                     topNode.addAttributes('lineNum', self.lineCounter)
                     word, label, now = self.advance()
                 else:
-                    self.errorReason += ('语法错误,line %d:'%self.lineCounter + ' 期待%s\n'%(X))
+                    self.errorReason += ('Syntax error, line %d:'%self.lineCounter + ' expect %s\n'%(X))
                     outResult += '\n'
                     break
             elif X == '#':
                 if X == now:
                     break
                 else:
-                    self.errorReason += ('语法错误,line %d:'%self.lineCounter + ' 检查%s附近\n'%(word))
+                    self.errorReason += ('Syntax error, line %d:'%self.lineCounter + ' please check near %s\n'%(word))
                     outResult += '\n'
                     break
             elif X in self.Virables and self.Table.table[X][now] not in [' ', 'synch']:
@@ -589,37 +595,37 @@ class SDTAnalysis:
                         addNode = topAddNode[len(topAddNode)-k-1]
                         if  addNode.children[0].data == '-':
                             addNode.children[0].data = '减'
-                            newReg = self.newReg()
+                            newTmp = self.newTmp()
                             self.funCode[self.domain].append(
                                 self.genCode(op='+',arg1={'reg':0},arg2= addNode.children[1].attributes['place'],
-                                             result={'reg':newReg}))
+                                             result={'reg':newTmp}))
                             self.funCode[self.domain].append(
-                                self.genCode(op='uminus',result={'reg':newReg})
+                                self.genCode(op='uminus',result={'reg':newTmp})
                             )
-                            addNode.children[1].attributes['place'] = {'reg': newReg}
+                            addNode.children[1].attributes['place'] = {'reg': newTmp}
                         if  addNode.parent.children[0].data == '-':
                             addNode.parent.children[0].data = '减'
-                            newReg = self.newReg()
+                            newTmp = self.newTmp()
                             self.funCode[self.domain].append(
                                 self.genCode(op='+',arg1={'reg':0},arg2= addNode.parent.children[1].attributes['place'],
-                                             result={'reg':newReg}))
+                                             result={'reg':newTmp}))
                             self.funCode[self.domain].append(
-                                self.genCode(op='uminus',result={'reg':newReg})
+                                self.genCode(op='uminus',result={'reg':newTmp})
                             )
-                            addNode.parent.children[1].attributes['place'] = {'reg': newReg}
-                        newReg = self.newReg()
+                            addNode.parent.children[1].attributes['place'] = {'reg': newTmp}
+                        newTmp = self.newTmp()
                         if  addNode.parent.data == '加法表达式':
                             code = self.genCode('+',
                                                 addNode.parent.children[0].attributes['place'],
                                                 addNode.children[1].attributes['place'],
-                                                {'reg': newReg})
-                            addNode.parent.addAttributes('place', {'reg': newReg})
+                                                {'reg': newTmp})
+                            addNode.parent.addAttributes('place', {'reg': newTmp})
                         else:
                             code = self.genCode('+',
                                                 addNode.parent.children[1].attributes['place'],
                                                 addNode.children[1].attributes['place'],
-                                                {'reg': newReg})
-                            addNode.parent.children[1].addAttributes('place', {'reg': newReg})
+                                                {'reg': newTmp})
+                            addNode.parent.children[1].addAttributes('place', {'reg': newTmp})
                         self.funCode[self.domain].append(code)
 
                 elif X == '项1' and topNode.children[0].data == 'NULL':
@@ -630,19 +636,19 @@ class SDTAnalysis:
                     del topMulNode[-1]
                     for k in range(len(topMulNode)):
                         mulNode = topMulNode[len(topMulNode) - k - 1]
-                        newReg = self.newReg()
+                        newTmp = self.newTmp()
                         if mulNode.parent.data == '项':
                             code = self.genCode(mulNode.children[0].data,
                                                 mulNode.parent.children[0].attributes['place'],
                                                 mulNode.children[1].attributes['place'],
-                                                {'reg': newReg})
-                            mulNode.parent.addAttributes('place', {'reg': newReg})
+                                                {'reg': newTmp})
+                            mulNode.parent.addAttributes('place', {'reg': newTmp})
                         else:
                             code = self.genCode(mulNode.children[0].data,
                                                 mulNode.parent.children[1].attributes['place'],
                                                 mulNode.children[1].attributes['place'],
-                                                {'reg': newReg})
-                            mulNode.parent.children[1].addAttributes('place', {'reg': newReg})
+                                                {'reg': newTmp})
+                            mulNode.parent.children[1].addAttributes('place', {'reg': newTmp})
                         self.funCode[self.domain].append(code)
                 elif X == '表达式1' and topNode.children[0].data == 'NULL':
                     if topNode.parent.data != '表达式1':
@@ -659,7 +665,7 @@ class SDTAnalysis:
                             topNode.parent.children[0].attributes['place'],
                             self.domain)
                         if symbolIndex < 0 or (tag != self.domain and tag != "global"):
-                            self.errorReason += ("Line%d: 未声明的标识符 %s\n" % (self.lineCounter,  topNode.parent.children[0].attributes['place']))
+                            self.errorReason += ("Line%d: undeclared identifier %s\n" % (self.lineCounter,  topNode.parent.children[0].attributes['place']))
                             break
                         if self.symbolList[symbolIndex]['label'] == 'formal':
                             topNode.parent.addAttributes('place',
@@ -672,7 +678,7 @@ class SDTAnalysis:
                         topNode.parent.parent.children[0].attributes['place'],
                         self.domain)
                     if symbolIndex < 0:
-                        self.errorReason += ("Line%d: 未声明的函数 %s\n" % (self.lineCounter, topNode.parent.parent.children[0].attributes['place']))
+                        self.errorReason += ("Line%d: undeclared function %s\n" % (self.lineCounter, topNode.parent.parent.children[0].attributes['place']))
                         break
                     self.tmpSymbolIndex.push(symbolIndex)
                     self.tmpParam.push([])
@@ -689,7 +695,7 @@ class SDTAnalysis:
                     self.tmpParam.pop()
                     self.tmpSymbolIndex.pop()
                     if paramCount != len(topParam):
-                        self.errorReason += ("Line%d: %s函数不接受%d个参数" % (
+                        self.errorReason += ("Line%d: %s function doesn't accept %d parameters\n" % (
                             self.lineCounter,
                             self.symbolList[topSymbolIndex]['idName'],
                             len(topParam)
@@ -706,9 +712,9 @@ class SDTAnalysis:
                     ))
                     topCallNode = self.tmpCallNode.top()
                     self.tmpCallNode.pop()
-                    newReg = self.newReg()
-                    self.funCode[self.domain].append(self.genCode(op='pop', result={'reg': newReg}))
-                    topCallNode.addAttributes("place", {'reg': newReg})
+                    newTmp = self.newTmp()
+                    self.funCode[self.domain].append(self.genCode(op='pop', result={'reg': newTmp}))
+                    topCallNode.addAttributes("place", {'reg': newTmp})
 
 
                 out = ('产生式: ' + self.Table.table[X][now].left
@@ -721,16 +727,15 @@ class SDTAnalysis:
                     newNode = node()
                     newNode.setData(X)
                     stack.push(newNode)
-                    self.errorReason += ('语法错误,line %d:'%self.lineCounter + ' 跳过%s, 检查%s附近\n'%(word, word))
-
+                    self.errorReason += ('Syntax error, line %d:'%self.lineCounter + ' skip %s , check near %s\n'%(word, word))
                     word, label, now = self.advance()
                     if word == -1:
-                        self.errorReason += ('ERROR,line %d:' % self.lineCounter + ' 语法分析错误结束\n')
+                        self.errorReason += ('Syntax error, line %d:' % self.lineCounter + ' meet the end token # before finishing analysis or no end token #\n')
                         outResult += '\n'
                         break
                     break
                 elif self.Table.table[X][now] == 'synch':
-                    self.errorReason += ('语法错误,line %d:'%self.lineCounter + ' %s出栈, 检查%s附近\n'%(X, word))
+                    self.errorReason += ('Syntax error, line %d:'%self.lineCounter + ' pop %s from the stack, check near %s\n'%(X, word))
                     break
                 outResult += '\n'
                 continue
@@ -738,17 +743,15 @@ class SDTAnalysis:
                 outResult += ' '.ljust(40)
 
             outResult += (('栈: ' + stack.show()).ljust(40)+'\n')
-        if 'main' not in self.funCode.keys():
-            self.errorReason += '未定义主函数'
-        for key in self.funCode.keys():
-            if key == 'global': continue
-            self.funCode[key][0]['entry'] = key
-            if self.haveReturn[key] == False:
-                self.errorReason += 'int %s函数必须返回一个值'%(key)
+        if self.errorReason == '' and 'main' not in self.funCode.keys():
+            self.errorReason += 'No main function defined.\n '
         if self.errorReason == '':
+            for key in self.funCode.keys():
+                if key == 'global': continue
+                self.funCode[key][0]['entry'] = key
+                if self.haveReturn[key] == False:
+                    self.errorReason += 'int %s must have a return value.\n' % (key)
             self.arrangeAddr()
-            for c in self.codeList:
-                print (c)
             return self.errorReason, self.codeList, self.symbolList
         else:
             return self.errorReason, None, None

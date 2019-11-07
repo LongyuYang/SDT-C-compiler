@@ -1,5 +1,5 @@
 # SDT-C-compiler
-This is a simple C compiler based on syntax-directed translation(SDT) using top-down LL(1). The syntax analysis and the semantic analysis are executed simultaneously.
+Course project for Principles of Compilers at TJU. This is a simple C compiler based on syntax-directed translation(SDT) using top-down LL(1). The syntax analysis and the semantic analysis are executed simultaneously.
 ## Requirements
 - Python 3.6
 - PyQt 5.11
